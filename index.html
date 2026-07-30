@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кардиограмма — Монитор ЭКГ</title>
+<style>
+  /* ============================================================
+     ГЛОБАЛЬНЫЕ СТИЛИ
+     ============================================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    user-select: none;
+  }
+
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: pointer;
+  }
+
+  /* ============================================================
+     МЕНЮ ВЫБОРА БОЛЕЗНИ (вверху)
+     ============================================================ */
+  .disease-menu {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    padding: 5px 8px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .disease-menu button {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.3);
+    border: 1px solid transparent;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .disease-menu button:hover {
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .disease-menu button.active {
+    color: #ff0044;
+    border-color: rgba(255, 0, 68, 0.3);
+    background: rgba(255, 0, 68, 0.08);
+    text-shadow: 0 0 8px rgba(255, 0, 68, 0.2);
+  }
+
+  /* ============================================================
+     ПАНЕЛЬ УПРАВЛЕНИЯ (внизу)
+     ============================================================ */
+  .controls {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(6px);
+    padding: 14px 32px;
+    border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 10;
+  }
+  .controls label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    letter-spacing: 1px;
+    font-weight: 400;
+  }
+  .controls input[type="range"] {
+    width: 200px;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 0, 68, 0.3);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  .controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ff0044;
+    box-shadow: 0 0 14px rgba(255, 0, 68, 0.6);
+    cursor: pointer;
+  }
+  .controls input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ff0044;
+    border: none;
+    box-shadow: 0 0 14px rgba(255, 0, 68, 0.6);
+    cursor: pointer;
+  }
+  .speed-value {
+    color: #ff0044;
+    font-size: 20px;
+    font-weight: 700;
+    min-width: 48px;
+    text-align: center;
+    text-shadow: 0 0 12px rgba(255, 0, 68, 0.5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================
+     ИНДИКАТОР BPM В УГЛУ
+     ============================================================ */
+  .corner-indicator {
+    position: fixed;
+    top: 70px;
+    right: 28px;
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 13px;
+    letter-spacing: 2px;
+    z-index: 10;
+    text-shadow: 0 0 8px rgba(255, 0, 68, 0.15);
+    text-align: right;
+  }
+  .corner-indicator span {
+    color: #ff0044;
+    font-weight: 700;
+    font-size: 28px;
+    display: block;
+    text-align: right;
+    text-shadow: 0 0 16px rgba(255, 0, 68, 0.4);
+  }
+  .corner-indicator .disease-name {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.2);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  /* Название болезни слева */
+  .disease-label {
+    position: fixed;
+    top: 24px;
+    left: 28px;
+    color: rgba(255, 255, 255, 0.1);
+    font-size: 10px;
+    letter-spacing: 2px;
+    z-index: 10;
+    text-transform: uppercase;
+  }
+  .disease-label .name {
+    color: #ff0044;
+    font-size: 13px;
+    display: block;
+    margin-top: 2px;
+    text-shadow: 0 0 10px rgba(255, 0, 68, 0.2);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="ecg"></canvas>
+
+<!-- ============================================================
+     МЕНЮ БОЛЕЗНЕЙ
+     ============================================================ -->
+<div class="disease-menu" id="diseaseMenu">
+  <button data-mode="normal" class="active">НОРМА</button>
+  <button data-mode="tachy">ТАХИ</button>
+  <button data-mode="brady">БРАДИ</button>
+  <button data-mode="afib">ФП</button>
+  <button data-mode="aflu">ТП</button>
+  <button data-mode="pvc">ЖЭС</button>
+  <button data-mode="mi">ИМ</button>
+  <button data-mode="vtach">ЖТ</button>
+  <button data-mode="lbbb">БЛНПГ</button>
+</div>
+
+<!-- ============================================================
+     ПОЛЗУНОК BPM
+     ============================================================ -->
+<div class="controls">
+  <label>ПУЛЬС</label>
+  <input type="range" id="speedSlider" min="40" max="250" step="1" value="72">
+  <span class="speed-value" id="speedDisplay">72</span>
+</div>
+
+<!-- ============================================================
+     ИНДИКАТОРЫ
+     ============================================================ -->
+<div class="corner-indicator">
+  BPM <span id="bpmDisplay">72</span>
+  <div class="disease-name" id="diseaseName">СИНУСОВЫЙ РИТМ</div>
+</div>
+
+<div class="disease-label" id="diseaseLabel">
+  РЕЖИМ
+  <span class="name" id="diseaseLabelName">Нормальный ритм</span>
+</div>
+
+<script>
+// ============================================================
+// 1. ИНИЦИАЛИЗАЦИЯ CANVAS
+// ============================================================
+const canvas = document.getElementById('ecg');
+const ctx = canvas.getContext('2d');
+
+let W, H, centerY;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  centerY = H * 0.58; // чуть ниже середины
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============================================================
+// 2. ПАРАМЕТРЫ
+// ============================================================
+const BUFFER_SIZE = 4000;      // размер буфера точек
+const BOOST_DURATION = 500;    // мс ускорения при клике
+const BOOST_SPEED_MULT = 4;    // множитель ускорения
+
+// Состояние анимации
+let currentBpm = 72;
+let boostEndTime = 0;
+let speedMultiplier = 1.0;
+
+// Фаза сердечного цикла (0..1, где 1 = один полный цикл)
+let phase = 0;
+
+// Кольцевой буфер точек (избегаем shift() — O(n))
+const points = new Float64Array(BUFFER_SIZE * 2); // x, y попарно
+let writeIdx = 0;              // текущая позиция записи
+let pointCount = 0;            // сколько точек накоплено
+let offsetX = 0;               // глобальный счётчик X
+
+// Текущий режим болезни
+let diseaseMode = 'normal';
+
+// ============================================================
+// 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+function gauss(x, center, width) {
+  return Math.exp(-Math.pow((x - center) / width, 2));
+}
+
+// ============================================================
+// 4. ТЕМПЛЕЙТ P-QRS-T КОМПЛЕКСА
+// ============================================================
+function ecgTemplate(phase, disease, extra) {
+  const ectopic = extra && extra.ectopic;
+  let val = 0;
+
+  // P-волна (деполяризация предсердий)
+  const hasPwave = !ectopic && disease !== 'afib' && disease !== 'aflu' && disease !== 'vtach';
+  if (hasPwave) {
+    val += 0.12 * gauss(phase, 0.06, 0.025);
+  }
+
+  // Для трепетания предсердий (AFlutter) — пилообразные волны
+  if (disease === 'aflu') {
+    const flutterPhase = (phase * 8) % 1.0; // 8:1 соотношение
+    val += 0.08 * Math.sin(flutterPhase * Math.PI * 2);
+    val += 0.04 * Math.sin(flutterPhase * Math.PI * 4 + 0.5);
+  }
+
+  // QRS-комплекс
+  let qrsWidth = 0.025;
+  let qrsAmp = 1.0;
+
+  if (ectopic || disease === 'pvc' || disease === 'vtach') {
+    qrsWidth = 0.055;
+    qrsAmp = 1.3;
+  }
+
+  if (disease === 'lbbb') {
+    qrsWidth = 0.045;  // широкий QRS при БЛНПГ
+    qrsAmp = 1.1;
+  }
+
+  if (disease === 'mi') {
+    qrsAmp = 0.85;
+  }
+
+  // Q-зубец
+  val += -0.1 * qrsAmp * gauss(phase, 0.19 - qrsWidth * 0.3, qrsWidth * 0.5);
+  // R-зубец (главный пик)
+  val += 1.0 * qrsAmp * gauss(phase, 0.20, qrsWidth * 0.6);
+  // S-зубец
+  val += -0.12 * qrsAmp * gauss(phase, 0.21 + qrsWidth * 0.3, qrsWidth * 0.5);
+
+  // Зазубренный R при БЛНПГ
+  if (disease === 'lbbb') {
+    val += 0.3 * qrsAmp * gauss(phase, 0.21, qrsWidth * 0.3);
+  }
+
+  // ST-сегмент
+  if (disease === 'mi') {
+    val += 0.18 * gauss(phase, 0.24, 0.08);
+  }
+
+  // T-волна (реполяризация желудочков)
+  let tAmp = 0.2;
+  let tWidth = 0.06;
+
+  if (disease === 'mi') {
+    tAmp = -0.15;
+    tWidth = 0.08;
+  }
+  if (ectopic) {
+    tAmp = 0.25;
+    tWidth = 0.08;
+  }
+
+  val += tAmp * gauss(phase, 0.48, tWidth);
+
+  // U-волна
+  val += 0.03 * gauss(phase, 0.62, 0.04);
+
+  // Фибрилляция предсердий (AFib)
+  if (disease === 'afib') {
+    val += 0.06 * Math.sin(phase * 180) * 0.5;
+    val += 0.04 * Math.sin(phase * 300 + 1.2);
+    val += 0.03 * Math.sin(phase * 500 + 0.7);
+  }
+
+  // Шум
+  val += 0.01 * (Math.random() - 0.5);
+
+  return val;
+}
+
+// ============================================================
+// 5. ГЕНЕРАЦИЯ ЗНАЧЕНИЯ ЭКГ
+// ============================================================
+function generateEcgValue() {
+  // Скорость анимации
+  const now = performance.now();
+  let speedMult = speedMultiplier;
+
+  if (now < boostEndTime) {
+    speedMult = BOOST_SPEED_MULT;
+    speedMultiplier = 1.0;
+  } else {
+    speedMultiplier += (1.0 - speedMultiplier) * 0.06;
+    speedMult = speedMultiplier;
+  }
+
+  // Приращение фазы — увеличенный интервал между комплексами
+  let phaseIncrement = (currentBpm / 3600) * speedMult * 0.7;
+
+  // Нерегулярный ритм при AFib
+  if (diseaseMode === 'afib') {
+    phaseIncrement *= (1.0 + (Math.random() - 0.5) * 0.6);
+  }
+
+  // Компенсаторная пауза после PVC
+  if (diseaseMode === 'pvc' && generateEcgValue.pvcCompensating) {
+    phaseIncrement *= 0.5;
+    if (typeof generateEcgValue.pvcPauseCount === 'undefined') {
+      generateEcgValue.pvcPauseCount = 0;
+    }
+    generateEcgValue.pvcPauseCount++;
+    if (generateEcgValue.pvcPauseCount > 8) {
+      generateEcgValue.pvcCompensating = false;
+      generateEcgValue.pvcPauseCount = 0;
+    }
+  }
+
+  phase += phaseIncrement;
+
+  // Нормализация фазы
+  if (phase > 1.0) {
+    phase -= 1.0;
+  }
+
+  // Определение эктопического удара (PVC)
+  let extra = {};
+  if (diseaseMode === 'pvc') {
+    if (typeof generateEcgValue.beatCount === 'undefined') {
+      generateEcgValue.beatCount = 0;
+      generateEcgValue.pvcInterval = 5 + Math.floor(Math.random() * 3);
+    }
+    if (phase > 0.95 && phase - phaseIncrement <= 0.95) {
+      generateEcgValue.beatCount++;
+      if (generateEcgValue.beatCount >= generateEcgValue.pvcInterval) {
+        generateEcgValue.beatCount = 0;
+        generateEcgValue.pvcInterval = 4 + Math.floor(Math.random() * 4);
+        generateEcgValue.pvcNext = true;
+      }
+    }
+    if (generateEcgValue.pvcNext) {
+      extra.ectopic = true;
+      generateEcgValue.pvcNext = false;
+      generateEcgValue.pvcCompensating = true;
+    }
+  }
+
+  // Генерация сигнала
+  const signal = ecgTemplate(phase, diseaseMode, extra);
+  const amplitude = H * 0.30;
+  return centerY - signal * amplitude;
+}
+
+// ============================================================
+// 6. ОСНОВНОЙ ЦИКЛ АНИМАЦИИ
+// ============================================================
+function update() {
+  const y = generateEcgValue();
+
+  offsetX += 1.0;
+
+  // Кольцевой буфер: запись без аллокаций
+  const idx = writeIdx * 2;
+  points[idx] = offsetX;
+  points[idx + 1] = y;
+  writeIdx = (writeIdx + 1) % BUFFER_SIZE;
+  if (pointCount < BUFFER_SIZE) pointCount++;
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+// ============================================================
+// 7. РЕНДЕРИНГ
+// ============================================================
+function draw() {
+  if (pointCount < 2) return;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Определяем видимое окно: последняя точка на 95% ширины
+  const lastIdx = ((writeIdx - 1 + BUFFER_SIZE) % BUFFER_SIZE) * 2;
+  const lastX = points[lastIdx];
+  const lastY = points[lastIdx + 1];
+  const shiftX = lastX - W * 0.95;
+
+  // Собираем точки для отрисовки (только видимые)
+  // Проходим по буферу от самой старой к самой новой
+  const startIdx = (pointCount < BUFFER_SIZE) ? 0 : writeIdx;
+
+  // Строим путь
+  ctx.beginPath();
+
+  let first = true;
+  for (let i = 0; i < pointCount; i++) {
+    const idx = ((startIdx + i) % BUFFER_SIZE) * 2;
+    const px = points[idx] - shiftX;
+    if (px < -10) continue; // невидимые слева — пропускаем
+    if (px > W + 10) break; // правее экрана — выходим
+    const py = points[idx + 1];
+    if (first) {
+      ctx.moveTo(px, py);
+      first = false;
+    } else {
+      ctx.lineTo(px, py);
+    }
+  }
+
+  // Градиент затухания
+  const gradient = ctx.createLinearGradient(0, 0, W, 0);
+  gradient.addColorStop(0, 'rgba(255, 0, 68, 0)');
+  gradient.addColorStop(0.05, 'rgba(255, 0, 68, 0.05)');
+  gradient.addColorStop(0.15, 'rgba(255, 0, 68, 0.2)');
+  gradient.addColorStop(0.35, 'rgba(255, 0, 68, 0.5)');
+  gradient.addColorStop(0.6, 'rgba(255, 0, 68, 0.8)');
+  gradient.addColorStop(0.85, 'rgba(255, 0, 68, 0.95)');
+  gradient.addColorStop(1, 'rgba(255, 0, 68, 1)');
+
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Свечение слой 1
+  ctx.save();
+  ctx.shadowColor = '#ff0044';
+  ctx.shadowBlur = 18;
+  ctx.strokeStyle = 'rgba(255, 0, 68, 0.6)';
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  first = true;
+  for (let i = 0; i < pointCount; i++) {
+    const idx = ((startIdx + i) % BUFFER_SIZE) * 2;
+    const px = points[idx] - shiftX;
+    if (px < -10) continue;
+    if (px > W + 10) break;
+    const py = points[idx + 1];
+    if (first) { ctx.moveTo(px, py); first = false; }
+    else { ctx.lineTo(px, py); }
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Свечение слой 2 (мягкое)
+  ctx.save();
+  ctx.shadowColor = '#ff0044';
+  ctx.shadowBlur = 40;
+  ctx.strokeStyle = 'rgba(255, 0, 68, 0.15)';
+  ctx.lineWidth = 5.0;
+  ctx.beginPath();
+  first = true;
+  for (let i = 0; i < pointCount; i++) {
+    const idx = ((startIdx + i) % BUFFER_SIZE) * 2;
+    const px = points[idx] - shiftX;
+    if (px < -10) continue;
+    if (px > W + 10) break;
+    const py = points[idx + 1];
+    if (first) { ctx.moveTo(px, py); first = false; }
+    else { ctx.lineTo(px, py); }
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Яркая точка на конце
+  ctx.beginPath();
+  ctx.arc(W * 0.95, lastY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff0044';
+  ctx.shadowColor = '#ff0044';
+  ctx.shadowBlur = 25;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ============================================================
+// 8. ИНТЕРАКТИВ: КЛИК = УСКОРЕНИЕ
+// ============================================================
+function handleBoost() {
+  boostEndTime = performance.now() + BOOST_DURATION;
+  speedMultiplier = 1.0;
+}
+
+canvas.addEventListener('click', handleBoost);
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  handleBoost();
+}, { passive: false });
+
+// ============================================================
+// 9. КОНФИГУРАЦИЯ РЕЖИМОВ БОЛЕЗНЕЙ
+// ============================================================
+const DISEASE_CONFIG = {
+  normal: {
+    name: 'Нормальный ритм',
+    shortName: 'НОРМА',
+    description: 'Синусовый ритм, регулярный',
+    bpmRange: [55, 100],
+    defaultBpm: 72
+  },
+  tachy: {
+    name: 'Синусовая тахикардия',
+    shortName: 'ТАХИКАРДИЯ',
+    description: 'Учащённый синусовый ритм',
+    bpmRange: [100, 180],
+    defaultBpm: 120
+  },
+  brady: {
+    name: 'Синусовая брадикардия',
+    shortName: 'БРАДИКАРДИЯ',
+    description: 'Замедленный синусовый ритм',
+    bpmRange: [30, 55],
+    defaultBpm: 45
+  },
+  afib: {
+    name: 'Фибрилляция предсердий',
+    shortName: 'ФП',
+    description: 'Неритмичный, нет P-волн',
+    bpmRange: [60, 160],
+    defaultBpm: 110
+  },
+  aflu: {
+    name: 'Трепетание предсердий',
+    shortName: 'ТП',
+    description: 'Пилообразные волны, нет P',
+    bpmRange: [60, 150],
+    defaultBpm: 100
+  },
+  pvc: {
+    name: 'Желудочковая экстрасистолия',
+    shortName: 'ЖЭС',
+    description: 'Эктопические удары, широкий QRS',
+    bpmRange: [55, 100],
+    defaultBpm: 72
+  },
+  mi: {
+    name: 'Инфаркт миокарда (STEMI)',
+    shortName: 'ИМ',
+    description: 'Элевация ST, инверсия T',
+    bpmRange: [60, 120],
+    defaultBpm: 85
+  },
+  vtach: {
+    name: 'Желудочковая тахикардия',
+    shortName: 'ЖТ',
+    description: 'Широкий QRS, быстрый ритм',
+    bpmRange: [100, 250],
+    defaultBpm: 160
+  },
+  lbbb: {
+    name: 'Блокада левой ножки пучка Гиса',
+    shortName: 'БЛНПГ',
+    description: 'Широкий QRS, зазубренный R',
+    bpmRange: [55, 100],
+    defaultBpm: 72
+  }
+};
+
+// ============================================================
+// 10. УПРАВЛЕНИЕ РЕЖИМАМИ
+// ============================================================
+function setDiseaseMode(mode) {
+  diseaseMode = mode;
+  const config = DISEASE_CONFIG[mode];
+
+  document.querySelectorAll('.disease-menu button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+
+  document.getElementById('diseaseName').textContent = config.shortName;
+  document.getElementById('diseaseLabelName').textContent = config.name;
+
+  const slider = document.getElementById('speedSlider');
+  slider.min = config.bpmRange[0];
+  slider.max = config.bpmRange[1];
+
+  const current = parseInt(slider.value, 10);
+  if (current < config.bpmRange[0] || current > config.bpmRange[1]) {
+    slider.value = config.defaultBpm;
+    applyBpm(config.defaultBpm);
+  }
+
+  // Сброс состояния PVC
+  if (typeof generateEcgValue.beatCount !== 'undefined') {
+    generateEcgValue.beatCount = 0;
+    generateEcgValue.pvcInterval = 5 + Math.floor(Math.random() * 3);
+    generateEcgValue.pvcNext = false;
+    generateEcgValue.pvcCompensating = false;
+    generateEcgValue.pvcPauseCount = 0;
+  }
+  phase = 0;
+}
+
+// Обработчики кнопок
+document.querySelectorAll('.disease-menu button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setDiseaseMode(btn.dataset.mode);
+  });
+});
+
+// ============================================================
+// 11. ПОЛЗУНОК BPM
+// ============================================================
+const slider = document.getElementById('speedSlider');
+const speedDisplay = document.getElementById('speedDisplay');
+const bpmDisplay = document.getElementById('bpmDisplay');
+
+function applyBpm(bpm) {
+  const config = DISEASE_CONFIG[diseaseMode];
+  const clamped = Math.max(config.bpmRange[0], Math.min(config.bpmRange[1], bpm));
+  currentBpm = clamped;
+  slider.value = clamped;
+  speedDisplay.textContent = clamped;
+  bpmDisplay.textContent = clamped;
+}
+
+setDiseaseMode('normal');
+
+slider.addEventListener('input', () => {
+  const bpm = parseInt(slider.value, 10);
+  applyBpm(bpm);
+  const speedVal = ((bpm - 40) / 28).toFixed(2);
+  fetch('/set_speed?value=' + speedVal).catch(() => {});
+});
+
+// ============================================================
+// 12. SSE — УДАЛЁННОЕ УПРАВЛЕНИЕ
+// ============================================================
+if (typeof EventSource !== 'undefined') {
+  const es = new EventSource('/events');
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'speed' && data.value !== undefined) {
+        const val = parseFloat(data.value);
+        if (!isNaN(val) && val >= 0.2 && val <= 5) {
+          const bpm = Math.round(40 + val * 28);
+          applyBpm(bpm);
+        }
+      }
+    } catch (err) {}
+  };
+  es.onerror = () => {};
+}
+
+// ============================================================
+// 13. ЗАПУСК
+// ============================================================
+update();
+</script>
+</body>
+</html>
